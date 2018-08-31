@@ -20,9 +20,9 @@ import os
 ###################################
 # POLICY CONFIGURATION VARIABLES
 
-SCANNED_RESOURCE_ROOT = 'pt'#'example_scanned_resc'
+SCANNED_RESOURCE_ROOT = 'example_scanned_resc'
 
-DESTINATION_RESOURCE_ROOT = 'dst_resc'#'example_dest_resc_root'
+DESTINATION_RESOURCE_ROOT = 'example_destination_resc'
 
 # By default, for resources which have no children, these are set to be the above variables
 # but for resources which are roots of a hierarchy, these variables must be set to contain
@@ -30,22 +30,22 @@ DESTINATION_RESOURCE_ROOT = 'dst_resc'#'example_dest_resc_root'
 # given an ilsresc output of:
 #
 # src_root:passthru
-# └── src_random:random
-#     ├── src0:unixfilesystem
-#     ├── src1:unixfilesystem
-#     └── src2:unixfilesystem
+# |-src_random:random
+#   |-src0:unixfilesystem
+#   |-src1:unixfilesystem
+#   |-src2:unixfilesystem
 #
 # LIST_OF_SCANNED_RESOURCE_LEAVES  = ['src0', 'src1', 'src2']
 #
 # dst_root:passthru
-# └── dst_compound:compound
-#     ├── dst_cache:unixfilesystem
-#     └── dst_archive:s3
+# |-dst_compound:compound
+#   |-dst_cache:unixfilesystem
+#   |-dst_archive:s3
 #
 # LIST_OF_DESTINATION_RESOURCE_LEAVES = ['dst_cache', 'dst_archive']
 
-LIST_OF_SCANNED_RESOURCE_LEAVES = ['ufs0']
-LIST_OF_DESTINATION_RESOURCE_LEAVES = ['dst_resc']
+LIST_OF_SCANNED_RESOURCE_LEAVES = [ SCANNED_RESOURCE_ROOT ]
+LIST_OF_DESTINATION_RESOURCE_LEAVES = [ DESTINATION_RESOURCE_ROOT ]
 
 ###################################
 
