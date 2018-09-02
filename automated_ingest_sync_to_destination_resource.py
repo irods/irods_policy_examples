@@ -114,7 +114,7 @@ def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
 
 
     if resource_is_not_target(target_resource):
-        #print("pep_api_mod_metadata_post - resources are not a match")
+        #print("pep_api_mod_data_obj_meta_post - resources are not a match")
         return
 
     # determine whether a replica already exists
@@ -124,14 +124,14 @@ def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
         physical_size = int(args['dataSize'])
         # compare sizes
         if physical_size != logical_size:
-            #print("pep_api_mod_data_obj_meta - Use Case 3")
+            #print("pep_api_mod_data_obj_meta_post - Use Case 3")
             # update if not equal
             status = 0
             params = "irodsAdmin=++++updateRepl=++++all="
             callback.msiDataObjRepl(logical_path,params,status)
         else:
             # match, do nothing
-            #print("pep_api_mod_metadata_post - data sizes match, no action taken")
+            #print("pep_api_mod_data_obj_meta_post - data sizes match, no action taken")
             pass
 
 # Dynamic Policy Enforcement Point for rsPhyPathReg
