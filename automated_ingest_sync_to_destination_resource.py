@@ -21,32 +21,38 @@ import os
 # POLICY CONFIGURATION VARIABLES
 
 SCANNED_RESOURCE_ROOT = 'example_scanned_resc'
-
 DESTINATION_RESOURCE_ROOT = 'example_destination_resc'
 
-# By default, for resources which have no children, these are set to be the above variables
-# but for resources which are roots of a hierarchy, these variables must be set to contain
-# all the leaves of the given scanned or destination resource hierarchies.  For example,
-# given an ilsresc output of:
+# By default, for root resources which have no children, the leaves variables
+# are set to be the above root variables.  The leaves are the roots.
 #
-# src_root:passthru
-# |-src_random:random
-#   |-src0:unixfilesystem
-#   |-src1:unixfilesystem
-#   |-src2:unixfilesystem
-#
-# LIST_OF_SCANNED_RESOURCE_LEAVES  = ['src0', 'src1', 'src2']
-#
-# dst_root:passthru
-# |-dst_compound:compound
-#   |-dst_cache:unixfilesystem
-#   |-dst_archive:s3
-#
-# LIST_OF_DESTINATION_RESOURCE_LEAVES = ['dst_cache', 'dst_archive']
 
 LIST_OF_SCANNED_RESOURCE_LEAVES = [ SCANNED_RESOURCE_ROOT ]
 LIST_OF_DESTINATION_RESOURCE_LEAVES = [ DESTINATION_RESOURCE_ROOT ]
 
+# When root resources have descendants in a tree (and are not standalone resources),
+# the leaves variables must be set to contain all the leaves of the respective tree.
+#
+# For example, given `ilsresc` for the scanned root:
+#
+# src_root:passthru
+# `-- src_random:random
+#     |-- src0:unixfilesystem
+#     |-- src1:unixfilesystem
+#     `-- src2:unixfilesystem
+#
+# SCANNED_RESOURCE_ROOT = 'src_root'
+# LIST_OF_SCANNED_RESOURCE_LEAVES  = ['src0', 'src1', 'src2']
+#
+# And `ilsresc` for the destination root:
+#
+# dst_root:passthru
+# `-- dst_compound:compound
+#     |-- dst_cache:unixfilesystem
+#     `-- dst_archive:s3
+#
+# DESTINATION_RESOURCE_ROOT = 'dst_root'
+# LIST_OF_DESTINATION_RESOURCE_LEAVES = ['dst_cache', 'dst_archive']
 ###################################
 
 def resource_is_not_target(resc_name):
