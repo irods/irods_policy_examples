@@ -102,6 +102,29 @@ def get_existing_replica_size_from_destination(callback, logical_path):
     logical_size = int(genQueryOut.sqlResult[0].row(0)) if previously_registered_replicas > 0 else None
     return (previously_registered_replicas, logical_size)
 
+# Given a logical path and a list of resource names
+# perform a general query to determine the destination resource id
+def get_destination_resource_id(callback, logical_path):
+    coll_name = os.path.dirname(logical_path)
+    data_name = logical_path.split('/')[-1]
+    resc_names = ','.join(["'"+i+"'" for i in LIST_OF_DESTINATION_RESOURCE_LEAVES])
+    conditions = "COLL_NAME = '{0}' AND DATA_NAME = '{1}' AND RESC_NAME in ({2})".format(coll_name, data_name, resc_names)
+
+    ret_val = callback.msiMakeGenQuery("DATA_RESC_ID", conditions, irods_types.GenQueryInp())
+    genQueryInp = ret_val['arguments'][2]
+
+    ret_val = callback.msiExecGenQuery(genQueryInp, irods_types.GenQueryOut())
+    genQueryOut = ret_val['arguments'][1]
+    previously_registered_replicas = genQueryOut.rowCnt
+
+    resc_id = int(genQueryOut.sqlResult[0].row(0)) if genQueryOut.rowCnt > 0 else None
+    return resc_id
+
+# set the replica status to either '1' or '0'
+def set_destination_replic_status(callback, logical_path, status):
+    resc_id = get_destination_resource_id(callback, logical_path)
+    callback.msimod_data_obj_meta(logical_path, resc_id, 'replStatus='+status)
+
 # Dynamic Policy Enforcement Point for rsModDataObjMeta
 # Required for Use Case 3
 def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
@@ -111,7 +134,6 @@ def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
     # do nothing if we're not on SCANNED_RESOURCE
     target_replica_number = args['replica_number']
     result_count, target_resource = get_resource_name_by_replica_number(callback, logical_path, target_replica_number)
-
 
     if resource_is_not_target(target_resource):
         #print("pep_api_mod_data_obj_meta_post - resources are not a match")
@@ -126,12 +148,17 @@ def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
         if physical_size != logical_size:
             #print("pep_api_mod_data_obj_meta_post - Use Case 3")
             # update if not equal
+            # invalidate destination replica status in order to allow an update
+            set_destination_replica_status(callback, logical_path, '0')
             status = 0
             params = "irodsAdmin=++++updateRepl=++++all="
             callback.msiDataObjRepl(logical_path,params,status)
         else:
             # match, do nothing
-            #print("pep_api_mod_data_obj_meta_post - data sizes match, no action taken")
+            #print("pep_api_mod_metadata_post - data sizes match, no action taken")
+            # reset the status of the destination replica to 1 as scanning
+            # and registraiton can invalidate the replica
+            set_destination_replica_status(callback, logical_path, '1')
             pass
 
 # Dynamic Policy Enforcement Point for rsPhyPathReg
@@ -151,7 +178,6 @@ def pep_api_phy_path_reg_post(rule_args, callback, rei):
         #print("pep_api_phy_path_reg_post - resources are not a match")
         return
 
-
     # determine whether a replica already exists
     previously_registered_replicas, logical_size = get_existing_replica_size_from_destination(callback, logical_path)
     if previously_registered_replicas > 0:
@@ -164,6 +190,8 @@ def pep_api_phy_path_reg_post(rule_args, callback, rei):
         if physical_size != logical_size:
             # Use Case 2 - Sizes Do Not Match, Update All Existing Replicas
             #print("pep_api_phy_path_reg_post - Use Case 2")
+            # invalidate destination replica status in order to allow an update
+            set_destination_replica_status(callback, logical_path, '0')
             status = 0
             params = "irodsAdmin=++++updateRepl=++++all="
             callback.msiDataObjRepl(logical_path,params,status)
