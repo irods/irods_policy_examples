@@ -121,7 +121,7 @@ def get_destination_resource_id(callback, logical_path):
     return resc_id
 
 # set the replica status to either '1' or '0'
-def set_destination_replic_status(callback, logical_path, status):
+def set_destination_replica_status(callback, logical_path, status):
     resc_id = get_destination_resource_id(callback, logical_path)
     callback.msimod_data_obj_meta(logical_path, resc_id, 'replStatus='+status)
 
@@ -157,7 +157,7 @@ def pep_api_mod_data_obj_meta_post(rule_args, callback, rei):
             # match, do nothing
             #print("pep_api_mod_metadata_post - data sizes match, no action taken")
             # reset the status of the destination replica to 1 as scanning
-            # and registraiton can invalidate the replica
+            # and registration can invalidate the replica
             set_destination_replica_status(callback, logical_path, '1')
             pass
 
