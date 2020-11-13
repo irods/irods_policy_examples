@@ -12,6 +12,11 @@
 # for replication using the msiDataObjRepl() microservice.
 #
 
+# The code to return to the Rule Engine Plugin Framework
+# so it looks for additional PEPs to fire.
+# Available in server version >= 4.2.6
+RULE_ENGINE_CONTINUE() { 5000000 }
+
 # Single point of truth for an error value
 get_error_value(*err) { *err = "ERROR_VALUE" }
 
@@ -20,6 +25,7 @@ get_error_value(*err) { *err = "ERROR_VALUE" }
 # *err_val is assigned as the resulting hierarchy.
 split_leaf_from_resource_hierarchy(*hier, *root, *leaf) {
     get_error_value(*err_val)
+
     *root = trimr(*hier, ";")
     if(strlen(*root) == strlen(*hier)) {
         *leaf = *root
@@ -38,37 +44,46 @@ get_destination_resource(*resc_name, *dest_resc) {
     # from source to destination resources.  Adjust as
     # requirements change in the future.
     *resource_map = list(
-                        list("source_resource_1",  "destination_resource_1"),
-                        list("source_resource_2",  "destination_resource_2"),
-                        list("source_resource_3",  "destination_resource_3")
+                        list("source0", "destination0"),
+                        list("source1", "destination1"),
+                        list("source2", "destination2"),
+                        list("source3", "destination3")
                     )
     foreach(*e in *resource_map) {
         *src = elem(*e, 0)
         if(*resc_name == *src) {
-             *dest_resc = elem(*e, 1)
+            *dest_resc = elem(*e, 1)
         }
     }
 }
 
 schedule_data_object_replication(*logical_path, *source_resource, *destination_resource) {
     *num_threads = "2"
-    # delay( .... ) {
-    #     msiDataObjRepl(*logical_path, "numThreads=*num_threads++++rescName=*source_resource++++destRescName=*destination_resource")
-    # }
-}
 
-# The code to return for the rule engine plugin framework to look for additional PEPs to fire.
-RULE_ENGINE_CONTINUE { 5000000 }
+    *key_value_pairs = "numThreads="++str(*num_threads)
+    *key_value_pairs = *key_value_pairs ++ "++++rescName=*source_resource"
+    *key_value_pairs = *key_value_pairs ++ "++++destRescName=*destination_resource"
+    writeLine("serverLog", "Scheduling Replication :: [*logical_path] [*key_value_pairs]")
+
+    # Consider adding retry parameters to delay() : <EF>1s DOUBLE UNTIL SUCCESS OR 10 TIMES<EF>
+    delay("<PLUSET>1s</PLUSET>") {
+        writeLine("serverLog", "Replicating :: [*logical_path] [*key_value_pairs]")
+        msiDataObjRepl(*logical_path, *key_value_pairs, *status)
+    }
+}
 
 pep_api_data_obj_put_post(*INSTANCE_NAME, *COMM, *DATAOBJINP, *BBUFF, *PORTAL_OPR_OUT) {
     get_error_value(*err_val)
     *resc_hier    = *DATAOBJINP.resc_hier
     *logical_path = *DATAOBJINP.obj_path
+
     while(*err_val != *resc_hier) {
         # Separate the leaf from the rest of the hierarchy.
         # Overwrite *resc_hier with remaining hierarchy for next iteration.
         split_leaf_from_resource_hierarchy(*resc_hier, *resc_hier, *leaf)
+
         writeLine("serverLog", "Processing Leaf [*leaf]")
+
         # Map the leaf to a destination resource name.
         get_destination_resource(*leaf, *destination_resource)
         if(*err_val != *destination_resource) {
@@ -77,7 +92,6 @@ pep_api_data_obj_put_post(*INSTANCE_NAME, *COMM, *DATAOBJINP, *BBUFF, *PORTAL_OP
         }
     }
 
-   # Available in server versions >= 4.2.6
-   RULE_ENGINE_CONTINUE;
-
+    # Return continuation code
+    RULE_ENGINE_CONTINUE;
 }
