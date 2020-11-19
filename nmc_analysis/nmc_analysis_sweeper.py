@@ -10,7 +10,7 @@ nmc_change_permission_script = 'nmc_set_permissions.sh'
 nmc_a = 'nmc'
 nmc_v = 'analysis'
 nmc_u = ''
-nmc_enqueued = 'enqueued'
+nmc_enqueued = '{}::enqueued'.format(nmc_a)
 
 ############
 
@@ -64,7 +64,7 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
             # replicate
             ruletext  = "msiDataObjRepl('{0}','destRescName={1}++++irodsAdmin=',*status);".format(path_to_replicate, nmc_target_resource)
             # remove as enqueued
-            ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(path_to_replicate, nmc_a, nmc_enqueued)
+            ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(path_to_replicate, nmc_enqueued, 'true')
             # set permissions on target replica
             # TODO with remote... causing this
             # Nov  4 14:15:57 pid:14724 remote addresses: 127.0.0.1, ::1 ERROR: caught python exception: TypeError: No to_python (by-value) converter found for C++ type: int
@@ -73,7 +73,7 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
             ruletext += "remote('{0}',''){{msiExecCmd('{1}','{2}','null','null','null',*status)}}".format(nmc_remote_hostname, nmc_change_permission_script, path_to_replicate)
             print('queuing', ruletext)
             # mark as enqueued
-            callback.msiModAVUMetadata('-d',path_to_replicate,'add',nmc_a,nmc_enqueued,'')
+            callback.msiModAVUMetadata('-d',path_to_replicate,'set',nmc_enqueued,'true','')
             # enqueue
             callback.delayExec(delay_condition.format('irods_rule_language'), ruletext, '')
 
@@ -113,12 +113,12 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
         # replicate
         ruletext  = "msiDataObjRepl('{0}','destRescName={1}++++irodsAdmin=',*status);".format(path_to_replicate, nmc_target_resource)
         # remove as enqueued
-        ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(path_to_replicate, nmc_a, nmc_enqueued)
+        ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(path_to_replicate, nmc_enqueued, 'true')
         # set permissions on target replica
         ruletext += "remote('{0}',''){{msiExecCmd('{1}','{2}','null','null','null',*status)}}".format(nmc_remote_hostname, nmc_change_permission_script, path_to_replicate)
         print('queuing', ruletext)
         # mark as enqueued
-        callback.msiModAVUMetadata('-d',path_to_replicate,'add',nmc_a,nmc_enqueued,'')
+        callback.msiModAVUMetadata('-d',path_to_replicate,'set',nmc_enqueued,'true','')
         # enqueue
         callback.delayExec(delay_condition.format('irods_rule_language'), ruletext, '')
 
@@ -247,17 +247,16 @@ def pep_api_rm_coll_pre(rule_args, callback, rei):
     nmc_halt_if_tagged(callback, logical_path)
 
 def nmc_halt_if_enqueued(callback, logical_path):
-    global nmc_a
     global nmc_enqueued
     # -41000 SYS_DELETE_DISALLOWED
     error_message =  "SYS_DELETE_DISALLOWED\n"
     error_message += " NMC Policy - Marked as 'Enqueued' - Cannot Remove Metadata\n"
     error_message += " {0}\n"
     # check this data object
-    if nmc_dataobj_has_avu(callback, logical_path, nmc_a, nmc_enqueued, ''):
+    if nmc_dataobj_has_avu(callback, logical_path, nmc_enqueued, 'true', ''):
         callback.msiExit('-41000', error_message.format(logical_path))
     # check descendent data objects
-    tagged_descendent_dataobject = nmc_any_descendent_dataobject_path_has_avu(callback, logical_path, nmc_a, nmc_enqueued, '')
+    tagged_descendent_dataobject = nmc_any_descendent_dataobject_path_has_avu(callback, logical_path, nmc_enqueued, 'true', '')
     if tagged_descendent_dataobject:
         callback.msiExit('-41000', error_message.format(tagged_descendent_dataobject))
 
@@ -272,7 +271,10 @@ def pep_api_mod_avu_metadata_pre(rule_args, callback, rei):
     logical_path = rule_args[2]['arg2']
     a = rule_args[2]['arg3']
     v = rule_args[2]['arg4']
-    u = rule_args[2]['arg5']
+    try:
+        u = rule_args[2]['arg5']
+    except KeyError:
+        u = ''
     # rm tag from data object or collection
     if (avu_operation in ['rm'] and avu_type in ['-d', '-C'] and [a, v, u] == [nmc_a, nmc_v, nmc_u]):
         nmc_halt_if_enqueued(callback, logical_path)
