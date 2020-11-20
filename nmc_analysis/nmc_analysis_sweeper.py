@@ -16,7 +16,7 @@ nmc_enqueued = '{}::enqueued'.format(nmc_a)
 
 delay_condition = '<PLUSET>1s</PLUSET><INST_NAME>irods_rule_engine_plugin-{0}-instance</INST_NAME>'
 
-# Adds three rules to the delay queue, and runs them periodically, forever
+# Add three rules to the delay queue, and run them periodically, forever
 def nmc_add_sweeper_to_queue(rule_args, callback, rei):
     global delay_condition
     ruletext  = 'callback.nmc_replicate_dataobjs_under_tagged_collections();'
@@ -36,7 +36,8 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
     global nmc_remote_hostname
     global nmc_change_permission_script
     main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and r.resc_name"
-    main_conditions = '? and (c.coll_name = ? or c.coll_name like ?)'
+    main_conditionals = '? and (c.coll_name = ? or c.coll_name like ?)'
+    main_ignore_enqueued = 'and not (META_DATA_ATTR_NAME = ? and META_DATA_ATTR_VALUE = ? and META_DATA_ATTR_UNITS = ?)'
     # find tagged collections
     for result in row_iterator("COLL_NAME",
                                "META_COLL_ATTR_NAME = '{0}' and META_COLL_ATTR_VALUE = '{1}' and META_COLL_ATTR_UNITS = '{2}'".format(nmc_a, nmc_v, nmc_u),
@@ -44,11 +45,12 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
                                callback):
 #        print(result)
         logical_path = result[0]
-        # find data objects under this collection without a good replica on the target resource
-        query = '{0} != {1} except ({0} = {1})'.format(main_select, main_conditions)
+        # find data objects under this collection (not enqueued) without a good replica on the target resource
+        query = '{0} != {1} {2} except ({0} = {1})'.format(main_select, main_conditionals, main_ignore_enqueued)
 #        print('query',query)
         p = Popen(['iquest', '--no-page', '--sql', query,
                    nmc_target_resource, logical_path, logical_path+'%',
+                   nmc_enqueued, 'true', '',
                    nmc_target_resource, logical_path, logical_path+'%'],
                    stdout=PIPE)
         out, err = p.communicate()
@@ -90,7 +92,8 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
     main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r"
     main_conditionals =  "where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id "
     main_conditionals += "and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name"
-    query = '{0} {1} != ? except ({0} {1} = ?)'.format(main_select, main_conditionals)
+    main_ignore_enqueued = 'and not (META_DATA_ATTR_NAME = ? and META_DATA_ATTR_VALUE = ? and META_DATA_ATTR_UNITS = ?)'
+    query = '{0} {1} != ? {2} except ({0} {1} = ?)'.format(main_select, main_conditionals, main_ignore_enqueued)
 #    print('query', query)
     p = Popen(['iquest', '--no-page', '--sql', query,
 #               nmc_a, nmc_v, nmc_u, nmc_target_resource,
@@ -98,6 +101,7 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
 # workaround, iquest cannot handle empty strings as parameters to specific queries
 # so, hardcoded above in the main_conditionals with empty string for m.meta_attr_unit
                nmc_a, nmc_v, nmc_target_resource,
+               nmc_enqueued, 'true', '',
                nmc_a, nmc_v, nmc_target_resource],
                stdout=PIPE)
     out, err = p.communicate()
@@ -129,8 +133,9 @@ def nmc_trim_untagged_dataobjs_on_target_resource(rule_args, callback, rei):
     global nmc_a
     global nmc_v
     global nmc_u
+    global nmc_enqueued
     for result in row_iterator("COLL_NAME, DATA_NAME",
-                               "DATA_RESC_NAME = '{0}'".format(nmc_target_resource),
+                               "DATA_RESC_NAME = '{0}' and META_DATA_ATTR_NAME = '{1}' and META_DATA_ATTR_VALUE = '{2}' and META_DATA_ATTR_UNITS = '{3}'".format(nmc_target_resource, nmc_enqueued, 'true', ''),
                                AS_LIST,
                                callback):
 #        print('nmc_trim_untagged_dataobjs_on_target_resource - found', result)
@@ -199,7 +204,7 @@ def nmc_any_descendent_subcollection_path_has_avu(callback, logical_path, a, v, 
         return descendent
     return False
 
-# call msiExit and send a good error message to the client
+# Call msiExit and send a good error message to the client
 def nmc_halt_if_tagged(callback, logical_path):
     global nmc_a
     global nmc_v
@@ -228,19 +233,19 @@ def nmc_halt_if_tagged(callback, logical_path):
         error_message += " If analysis is complete:\n $ imeta rm -C {0} {1} {2} {3}"
         callback.msiExit('-41000', error_message.format(tagged_descendent_collection, nmc_a, nmc_v, nmc_u))
 
-# disallow trimming of a replica if tagged
+# Disallow trimming of a replica if tagged
 def pep_api_data_obj_trim_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
 #    print('trim pre', logical_path)
     nmc_halt_if_tagged(callback, logical_path)
 
-# disallow removal of a data object if tagged
+# Disallow removal of a data object if tagged
 def pep_api_data_obj_unlink_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
 #    print('unlink pre', logical_path)
     nmc_halt_if_tagged(callback, logical_path)
 
-# disallow removal of a collection if tagged
+# Disallow removal of a collection if tagged
 def pep_api_rm_coll_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].collName)
 #    print('rm coll pre', logical_path)
@@ -260,8 +265,8 @@ def nmc_halt_if_enqueued(callback, logical_path):
     if tagged_descendent_dataobject:
         callback.msiExit('-41000', error_message.format(tagged_descendent_dataobject))
 
-# disallow removal of tagging from data object if data object is marked as enqueued
-# disallow removal of tagging from collection if any data objects below it are marked as enqueued
+# Disallow removal of tagging from data object if data object is marked as enqueued
+# Disallow removal of tagging from collection if any data objects below it are marked as enqueued
 def pep_api_mod_avu_metadata_pre(rule_args, callback, rei):
     global nmc_a
     global nmc_v
