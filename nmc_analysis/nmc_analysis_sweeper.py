@@ -35,9 +35,11 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
     global nmc_enqueued
     global nmc_remote_hostname
     global nmc_change_permission_script
-    main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and r.resc_name"
-    main_conditionals = '? and (c.coll_name = ? or c.coll_name like ?)'
-    main_ignore_enqueued = 'and not (META_DATA_ATTR_NAME = ? and META_DATA_ATTR_VALUE = ? and META_DATA_ATTR_UNITS = ?)'
+    main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r"
+    main_select_metadata = ", R_META_MAIN m, R_OBJT_METAMAP o"
+    main_conditionals = "where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1'"
+    main_conditionals += " and (c.coll_name = ? or c.coll_name like ?) and r.resc_name"
+    main_ignore_enqueued = "and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '')"
     # find tagged collections
     for result in row_iterator("COLL_NAME",
                                "META_COLL_ATTR_NAME = '{0}' and META_COLL_ATTR_VALUE = '{1}' and META_COLL_ATTR_UNITS = '{2}'".format(nmc_a, nmc_v, nmc_u),
@@ -46,12 +48,12 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
 #        print(result)
         logical_path = result[0]
         # find data objects under this collection (not enqueued) without a good replica on the target resource
-        query = '{0} != {1} {2} except ({0} = {1})'.format(main_select, main_conditionals, main_ignore_enqueued)
+        query = '{0}{1} {2} != ? {3} except ({0} {2} = ?)'.format(main_select, main_select_metadata, main_conditionals, main_ignore_enqueued)
 #        print('query',query)
         p = Popen(['iquest', '--no-page', '--sql', query,
-                   nmc_target_resource, logical_path, logical_path+'%',
-                   nmc_enqueued, 'true', '',
-                   nmc_target_resource, logical_path, logical_path+'%'],
+                   logical_path, logical_path+'%', nmc_target_resource,
+                   nmc_enqueued, 'true',
+                   logical_path, logical_path+'%', nmc_target_resource],
                    stdout=PIPE)
         out, err = p.communicate()
         if out == 'No rows found\n':
@@ -92,7 +94,7 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
     main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r"
     main_conditionals =  "where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id "
     main_conditionals += "and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name"
-    main_ignore_enqueued = 'and not (META_DATA_ATTR_NAME = ? and META_DATA_ATTR_VALUE = ? and META_DATA_ATTR_UNITS = ?)'
+    main_ignore_enqueued = "and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '')"
     query = '{0} {1} != ? {2} except ({0} {1} = ?)'.format(main_select, main_conditionals, main_ignore_enqueued)
 #    print('query', query)
     p = Popen(['iquest', '--no-page', '--sql', query,
@@ -101,7 +103,7 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
 # workaround, iquest cannot handle empty strings as parameters to specific queries
 # so, hardcoded above in the main_conditionals with empty string for m.meta_attr_unit
                nmc_a, nmc_v, nmc_target_resource,
-               nmc_enqueued, 'true', '',
+               nmc_enqueued, 'true',
                nmc_a, nmc_v, nmc_target_resource],
                stdout=PIPE)
     out, err = p.communicate()
@@ -135,15 +137,24 @@ def nmc_trim_untagged_dataobjs_on_target_resource(rule_args, callback, rei):
     global nmc_u
     global nmc_enqueued
     for result in row_iterator("COLL_NAME, DATA_NAME",
-                               "DATA_RESC_NAME = '{0}' and META_DATA_ATTR_NAME = '{1}' and META_DATA_ATTR_VALUE = '{2}' and META_DATA_ATTR_UNITS = '{3}'".format(nmc_target_resource, nmc_enqueued, 'true', ''),
+                               "DATA_RESC_NAME = '{0}'".format(nmc_target_resource),
                                AS_LIST,
                                callback):
 #        print('nmc_trim_untagged_dataobjs_on_target_resource - found', result)
         logical_path = "{0}/{1}".format(result[0],result[1])
-        if not (nmc_dataobj_has_avu(callback, logical_path, nmc_a, nmc_v, nmc_u) or nmc_any_recursive_parent_path_has_avu(callback, logical_path, nmc_a, nmc_v, nmc_u)):
+        if not (nmc_dataobj_has_avu(callback, logical_path, nmc_a, nmc_v, nmc_u) or
+                nmc_dataobj_has_avu(callback, logical_path, nmc_enqueued, 'true', '') or
+                nmc_any_recursive_parent_path_has_avu(callback, logical_path, nmc_a, nmc_v, nmc_u)):
+            # trim
             ruletext = "msiDataObjTrim('{0}', '{1}', 'null', '1', '1', 0);".format(logical_path, nmc_target_resource)
+            # remove as enqueued
+            ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(logical_path, nmc_enqueued, 'true')
+            # log
             ruletext += "writeLine('serverLog','msiDataObjTrim [{0}] from [{1}] complete');".format(logical_path, nmc_target_resource)
             print('queuing', ruletext)
+            # mark as enqueued
+            callback.msiModAVUMetadata('-d',logical_path,'set',nmc_enqueued,'true','')
+            # enqueue
             callback.delayExec(delay_condition.format('irods_rule_language'), ruletext, '')
 
 # Check whether a dataobj has a particular AVU
