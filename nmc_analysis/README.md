@@ -22,8 +22,8 @@ echo "from nmc_analysis_sweeper import *" > /etc/irods/core.py
 cp nmc_analysis_sweeper.py /etc/irods/
 cp nmc_set_permissions.sh /var/lib/irods/msiExecCmd_bin/
 chmod +x /var/lib/irods/msiExecCmd_bin/nmc_set_permissions.sh
-iadmin asq "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and r.resc_name != ? and (c.coll_name = ? or c.coll_name like ?) except (select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and r.resc_name = ? and (c.coll_name = ? or c.coll_name like ?))" nmc_find_data_objects_below
-iadmin asq "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name != ? except (select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name = ?)" nmc_find_tagged_data_objects
+iadmin asq "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r, R_META_MAIN m, R_OBJT_METAMAP o where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and (c.coll_name = ? or c.coll_name like ?) and r.resc_name != ? and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '') except (select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1' and (c.coll_name = ? or c.coll_name like ?) and r.resc_name = ?)" nmc_find_data_objects_below
+iadmin asq "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name != ? and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '') except (select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name = ?)" nmc_find_tagged_data_objects
 irule -r irods_rule_engine_plugin-python-instance nmc_add_sweeper_to_queue null null
 ```
 
@@ -52,13 +52,13 @@ $ time bash bats-core/bin/bats test_nmc_analysis.bats
 16 tests, 0 failures
 
 
-real    3m50.657s
-user    0m3.629s
-sys     0m0.954s
+real    2m4.745s
+user    0m8.606s
+sys     0m2.172s
 ```
 
 # TODO
 
  - possible Popen reuse
  - possible 41000 error code reuse
- - testing is sleep-based - move to query-based
+ - walk permissions script up to root
