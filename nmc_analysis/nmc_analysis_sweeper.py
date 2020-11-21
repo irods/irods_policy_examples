@@ -35,11 +35,6 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
     global nmc_enqueued
     global nmc_remote_hostname
     global nmc_change_permission_script
-    main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_RESC_MAIN r"
-    main_select_metadata = ", R_META_MAIN m, R_OBJT_METAMAP o"
-    main_conditionals = "where d.coll_id = c.coll_id and r.resc_id = d.resc_id and d.data_is_dirty = '1'"
-    main_conditionals += " and (c.coll_name = ? or c.coll_name like ?) and r.resc_name"
-    main_ignore_enqueued = "and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '')"
     # find tagged collections
     for result in row_iterator("COLL_NAME",
                                "META_COLL_ATTR_NAME = '{0}' and META_COLL_ATTR_VALUE = '{1}' and META_COLL_ATTR_UNITS = '{2}'".format(nmc_a, nmc_v, nmc_u),
@@ -48,12 +43,18 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
 #        print(result)
         logical_path = result[0]
         # find data objects under this collection (not enqueued) without a good replica on the target resource
-        query = '{0}{1} {2} != ? {3} except ({0} {2} = ?)'.format(main_select, main_select_metadata, main_conditionals, main_ignore_enqueued)
-#        print('query',query)
-        p = Popen(['iquest', '--no-page', '--sql', query,
-                   logical_path, logical_path+'%', nmc_target_resource,
-                   nmc_enqueued, 'true',
-                   logical_path, logical_path+'%', nmc_target_resource],
+        specific_query = 'nmc_find_data_objects_below'
+        p = Popen(['iquest', '--no-page', '--sql', specific_query,
+                   # good replica on source with coll_name =
+                   nmc_target_resource, logical_path,
+                   # good replica on source with coll_name like
+                   nmc_target_resource, logical_path+'%',
+                   # good replica on destination
+                   nmc_target_resource,
+                   # enqueued
+                   # workaround, iquest cannot handle empty strings as parameters to specific queries
+                   # so, hardcoded empty string for m.meta_attr_unit stored in the specific query
+                   nmc_enqueued, 'true'],
                    stdout=PIPE)
         out, err = p.communicate()
         if out == 'No rows found\n':
@@ -91,20 +92,16 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
     global nmc_enqueued
     global nmc_remote_hostname
     global nmc_change_permission_script
-    main_select = "select c.coll_name, d.data_name from R_COLL_MAIN c, R_DATA_MAIN d, R_META_MAIN m, R_OBJT_METAMAP o, R_RESC_MAIN r"
-    main_conditionals =  "where d.coll_id = c.coll_id and o.object_id = d.data_id and o.meta_id = m.meta_id and r.resc_id = d.resc_id "
-    main_conditionals += "and m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '' and d.data_is_dirty = '1' and r.resc_name"
-    main_ignore_enqueued = "and not (m.meta_attr_name = ? and m.meta_attr_value = ? and m.meta_attr_unit = '')"
-    query = '{0} {1} != ? {2} except ({0} {1} = ?)'.format(main_select, main_conditionals, main_ignore_enqueued)
-#    print('query', query)
-    p = Popen(['iquest', '--no-page', '--sql', query,
-#               nmc_a, nmc_v, nmc_u, nmc_target_resource,
-#               nmc_a, nmc_v, nmc_u, nmc_target_resource],
-# workaround, iquest cannot handle empty strings as parameters to specific queries
-# so, hardcoded above in the main_conditionals with empty string for m.meta_attr_unit
-               nmc_a, nmc_v, nmc_target_resource,
-               nmc_enqueued, 'true',
-               nmc_a, nmc_v, nmc_target_resource],
+    specific_query = 'nmc_find_tagged_data_objects'
+    p = Popen(['iquest', '--no-page', '--sql', specific_query,
+               # tagged good replica on source
+               nmc_target_resource, nmc_a, nmc_v,
+               # good replica on destination
+               nmc_target_resource,
+               # enqueued
+               # workaround, iquest cannot handle empty strings as parameters to specific queries
+               # so, hardcoded empty string for m.meta_attr_unit stored in the specific query
+               nmc_enqueued, 'true'],
                stdout=PIPE)
     out, err = p.communicate()
 #    print('out', out)
@@ -164,7 +161,7 @@ def nmc_dataobj_has_avu(callback, logical_path, a, v, u):
 #    print('checking... ' + str(logical_path))
     collection_name = os.path.dirname(logical_path)
     dataobject_name = os.path.basename(logical_path)
-    for result in row_iterator("META_DATA_ATTR_NAME, META_DATA_ATTR_VALUE, META_DATA_ATTR_UNITS",
+    for result in row_iterator("DATA_NAME",
                                "COLL_NAME = '{0}' and DATA_NAME = '{1}' and META_DATA_ATTR_NAME = '{2}' and META_DATA_ATTR_VALUE = '{3}' and META_DATA_ATTR_UNITS = '{4}'".format(collection_name, dataobject_name, a, v, u),
                                AS_LIST,
                                callback):
@@ -179,7 +176,7 @@ def nmc_any_recursive_parent_path_has_avu(callback, logical_path, a, v, u):
     while (logical_path != '/'):
 
 #        print('checking... ' + str(logical_path))
-        for result in row_iterator("META_COLL_ATTR_NAME, META_COLL_ATTR_VALUE, META_COLL_ATTR_UNITS",
+        for result in row_iterator("COLL_NAME",
                                    "COLL_NAME = '{0}' and META_COLL_ATTR_NAME = '{1}' and META_COLL_ATTR_VALUE = '{2}' and META_COLL_ATTR_UNITS = '{3}'".format(logical_path, a, v, u),
                                    AS_LIST,
                                    callback):
@@ -193,7 +190,6 @@ def nmc_any_recursive_parent_path_has_avu(callback, logical_path, a, v, u):
 # return data object logical_path or False
 def nmc_any_descendent_dataobject_path_has_avu(callback, logical_path, a, v, u):
     logical_path = str(logical_path)
-    found_avu = False
     for result in row_iterator("COLL_NAME, DATA_NAME",
                                "COLL_NAME = '{0}' || like '{0}/%' and META_DATA_ATTR_NAME = '{1}' and META_DATA_ATTR_VALUE = '{2}' and META_DATA_ATTR_UNITS = '{3}'".format(logical_path, a, v, u),
                                AS_LIST,
@@ -206,7 +202,6 @@ def nmc_any_descendent_dataobject_path_has_avu(callback, logical_path, a, v, u):
 # return subcollection logical_path or False
 def nmc_any_descendent_subcollection_path_has_avu(callback, logical_path, a, v, u):
     logical_path = str(logical_path)
-    found_avu = False
     for result in row_iterator("COLL_NAME",
                                "COLL_NAME = '{0}' || like '{0}/%' and META_COLL_ATTR_NAME = '{1}' and META_COLL_ATTR_VALUE = '{2}' and META_COLL_ATTR_UNITS = '{3}'".format(logical_path, a, v, u),
                                AS_LIST,
