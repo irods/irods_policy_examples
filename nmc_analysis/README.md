@@ -61,4 +61,3 @@ sys     0m2.172s
 
  - possible Popen reuse
  - possible 41000 error code reuse
- - walk permissions script up to root

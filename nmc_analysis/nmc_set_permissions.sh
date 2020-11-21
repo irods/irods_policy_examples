@@ -1,12 +1,18 @@
 #!/bin/bash
 
+target_resource="nmc-analysis"
+
 logical_path=$1
-logfile=$(ls -rt /var/lib/irods/log/rodsLog* | tail -n1)
 collection=$(dirname ${logical_path})
 dataobject=$(basename ${logical_path})
-physical_path=$(iquest "%s" "select DATA_PATH where COLL_NAME = '${collection}' and DATA_NAME = '${dataobject}' and RESC_NAME = 'nmc-analysis'")
-echo "physical_path[${physical_path}]" >> $logfile
-chmod 744 -R ${physical_path}
-
-exit 0;
-
+CHMOD_TARGET=$(iquest "%s" "select DATA_PATH where COLL_NAME = '${collection}' and DATA_NAME = '${dataobject}' and RESC_NAME = '${target_resource'")
+while [ "${CHMOD_TARGET}" != "/" ] ; do
+    if [ -d "${CHMOD_TARGET}" ] ; then
+        TARGET_PERMISSIONS="755"
+    else
+        TARGET_PERMISSIONS="644"
+    fi
+    CMD="chmod ${TARGET_PERMISSIONS} ${CHMOD_TARGET}"
+    ${CMD}
+    CHMOD_TARGET=$(dirname "${CHMOD_TARGET}")
+done
