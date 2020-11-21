@@ -2,10 +2,10 @@
 
 target_resource="nmc-analysis"
 
-logical_path=$1
-collection=$(dirname ${logical_path})
-dataobject=$(basename ${logical_path})
-CHMOD_TARGET=$(iquest "%s" "select DATA_PATH where COLL_NAME = '${collection}' and DATA_NAME = '${dataobject}' and RESC_NAME = '${target_resource'")
+logical_path="$1"
+collection=$(dirname "${logical_path}")
+dataobject=$(basename "${logical_path}")
+CHMOD_TARGET=$(iquest "%s" "select DATA_PATH where COLL_NAME = '${collection}' and DATA_NAME = '${dataobject}' and RESC_NAME = '${target_resource}'")
 while [ "${CHMOD_TARGET}" != "/" ] ; do
     if [ -d "${CHMOD_TARGET}" ] ; then
         TARGET_PERMISSIONS="755"
