@@ -22,7 +22,7 @@ def nmc_add_sweeper_to_queue(rule_args, callback, rei):
     ruletext  = 'callback.nmc_replicate_dataobjs_under_tagged_collections();'
     ruletext += 'callback.nmc_replicate_tagged_dataobjs();'
     ruletext += 'callback.nmc_trim_untagged_dataobjs_on_target_resource();'
-    print('queuing', ruletext)
+    callback.writeLine('serverLog',f'enqueuing [{ruletext}]')
     callback.delayExec(delay_condition.format('python')+'<EF>REPEAT FOR EVER</EF>', ruletext, '')
 
 # Replicate any data objects under a tagged collection that are not already cleanly on the target resource
@@ -40,7 +40,7 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
                                "META_COLL_ATTR_NAME = '{0}' and META_COLL_ATTR_VALUE = '{1}' and META_COLL_ATTR_UNITS = '{2}'".format(nmc_a, nmc_v, nmc_u),
                                AS_LIST,
                                callback):
-#        print(result)
+#        callback.writeLine('serverLog', f'result [{result}]')
         logical_path = result[0]
         # find data objects under this collection (not enqueued) without a good replica on the target resource
         specific_query = 'nmc_find_data_objects_below'
@@ -57,15 +57,15 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
                    nmc_enqueued, 'true'],
                    stdout=PIPE)
         out, err = p.communicate()
-        if out == 'No rows found\n':
+        if out == b'CAT_NO_ROWS_FOUND: Nothing was found matching your query\n':
             return
         if (err):
-            print('err', err)
-        results = out.split('----\n')
+            callback.writeLine('serverLog', f'err [{err}]')
+        results = out.split(b'----\n')
         for i in results:
-            parts = i.split('\n')[:-1]
-            path_to_replicate = '/'.join(parts)
-#            print(path_to_replicate)
+            parts = i.split(b'\n')[:-1]
+            path_to_replicate = b'/'.join(parts).decode()
+#            callback.writeLine('serverLog', f'path_to_replicate [{path_to_replicate}]')
             # replicate
             ruletext  = "msiDataObjRepl('{0}','destRescName={1}++++irodsAdmin=',*status);".format(path_to_replicate, nmc_target_resource)
             # remove as enqueued
@@ -76,7 +76,7 @@ def nmc_replicate_dataobjs_under_tagged_collections(rule_args, callback, rei):
             # Nov  4 14:15:57 pid:14724 remote addresses: 127.0.0.1, ::1 ERROR: Rule Engine Plugin returned [0].
             # but working...
             ruletext += "remote('{0}',''){{msiExecCmd('{1}','{2}','null','null','null',*status)}}".format(nmc_remote_hostname, nmc_change_permission_script, path_to_replicate)
-            print('queuing', ruletext)
+            callback.writeLine('serverLog',f'enqueuing [{ruletext}]')
             # mark as enqueued
             callback.msiModAVUMetadata('-d',path_to_replicate,'set',nmc_enqueued,'true','')
             # enqueue
@@ -104,22 +104,22 @@ def nmc_replicate_tagged_dataobjs(rule_args, callback, rei):
                nmc_enqueued, 'true'],
                stdout=PIPE)
     out, err = p.communicate()
-#    print('out', out)
-    if out == 'No rows found\n':
+#    callback.writeLine('serverLog',f'out [{out}]')
+    if out == b'CAT_NO_ROWS_FOUND: Nothing was found matching your query\n':
         return
     if (err):
-        print('err', err)
-    results = out.split('----\n')
+        callback.writeLine('serverLog', f'err [{err}]')
+    results = out.split(b'----\n')
     for i in results:
-        parts = i.split('\n')[:-1]
-        path_to_replicate = '/'.join(parts)
+        parts = i.split(b'\n')[:-1]
+        path_to_replicate = b'/'.join(parts).decode()
         # replicate
         ruletext  = "msiDataObjRepl('{0}','destRescName={1}++++irodsAdmin=',*status);".format(path_to_replicate, nmc_target_resource)
         # remove as enqueued
         ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(path_to_replicate, nmc_enqueued, 'true')
         # set permissions on target replica
         ruletext += "remote('{0}',''){{msiExecCmd('{1}','{2}','null','null','null',*status)}}".format(nmc_remote_hostname, nmc_change_permission_script, path_to_replicate)
-        print('queuing', ruletext)
+        callback.writeLine('serverLog',f'enqueuing [{ruletext}]')
         # mark as enqueued
         callback.msiModAVUMetadata('-d',path_to_replicate,'set',nmc_enqueued,'true','')
         # enqueue
@@ -137,7 +137,7 @@ def nmc_trim_untagged_dataobjs_on_target_resource(rule_args, callback, rei):
                                "DATA_RESC_NAME = '{0}'".format(nmc_target_resource),
                                AS_LIST,
                                callback):
-#        print('nmc_trim_untagged_dataobjs_on_target_resource - found', result)
+#        callback.writeLine('serverLog', f'nmc_trim_untagged_dataobjs_on_target_resource - found [{result}]')
         logical_path = "{0}/{1}".format(result[0],result[1])
         if not (nmc_dataobj_has_avu(callback, logical_path, nmc_a, nmc_v, nmc_u) or
                 nmc_dataobj_has_avu(callback, logical_path, nmc_enqueued, 'true', '') or
@@ -148,7 +148,7 @@ def nmc_trim_untagged_dataobjs_on_target_resource(rule_args, callback, rei):
             ruletext += "msiModAVUMetadata('-d','{0}','rm','{1}','{2}','');".format(logical_path, nmc_enqueued, 'true')
             # log
             ruletext += "writeLine('serverLog','msiDataObjTrim [{0}] from [{1}] complete');".format(logical_path, nmc_target_resource)
-            print('queuing', ruletext)
+            callback.writeLine('serverLog', f'enqueuing [{ruletext}]')
             # mark as enqueued
             callback.msiModAVUMetadata('-d',logical_path,'set',nmc_enqueued,'true','')
             # enqueue
@@ -158,7 +158,7 @@ def nmc_trim_untagged_dataobjs_on_target_resource(rule_args, callback, rei):
 # return boolean
 def nmc_dataobj_has_avu(callback, logical_path, a, v, u):
     logical_path = str(logical_path)
-#    print('checking... ' + str(logical_path))
+#    callback.writeLine('serverLog', f'checking... [{logical_path}]')
     collection_name = os.path.dirname(logical_path)
     dataobject_name = os.path.basename(logical_path)
     for result in row_iterator("DATA_NAME",
@@ -175,7 +175,7 @@ def nmc_any_recursive_parent_path_has_avu(callback, logical_path, a, v, u):
     found_avu = False
     while (logical_path != '/'):
 
-#        print('checking... ' + str(logical_path))
+#        callback.writeLine('serverLog', f'checking... [{logical_path}]')
         for result in row_iterator("COLL_NAME",
                                    "COLL_NAME = '{0}' and META_COLL_ATTR_NAME = '{1}' and META_COLL_ATTR_VALUE = '{2}' and META_COLL_ATTR_UNITS = '{3}'".format(logical_path, a, v, u),
                                    AS_LIST,
@@ -242,19 +242,19 @@ def nmc_halt_if_tagged(callback, logical_path):
 # Disallow trimming of a replica if tagged
 def pep_api_data_obj_trim_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
-#    print('trim pre', logical_path)
+#    callback.writeLine('serverLog', f'trim pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
 
 # Disallow removal of a data object if tagged
 def pep_api_data_obj_unlink_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
-#    print('unlink pre', logical_path)
+#    callback.writeLine('serverLog', f'unlink pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
 
 # Disallow removal of a collection if tagged
 def pep_api_rm_coll_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].collName)
-#    print('rm coll pre', logical_path)
+#    callback.writeLine('serverLog', f'rm coll pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
 
 def nmc_halt_if_enqueued(callback, logical_path):
