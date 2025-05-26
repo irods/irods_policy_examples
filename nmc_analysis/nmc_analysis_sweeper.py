@@ -1,6 +1,7 @@
 import os
 from genquery import *
 from subprocess import Popen, PIPE
+import irods_errors
 
 ############
 
@@ -244,18 +245,24 @@ def pep_api_data_obj_trim_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
 #    callback.writeLine('serverLog', f'trim pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
+    # let other policy sets fire
+    return irods_errors.RULE_ENGINE_CONTINUE
 
 # Disallow removal of a data object if tagged
 def pep_api_data_obj_unlink_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].objPath)
 #    callback.writeLine('serverLog', f'unlink pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
+    # let other policy sets fire
+    return irods_errors.RULE_ENGINE_CONTINUE
 
 # Disallow removal of a collection if tagged
 def pep_api_rm_coll_pre(rule_args, callback, rei):
     logical_path = str(rule_args[2].collName)
 #    callback.writeLine('serverLog', f'rm coll pre [{logical_path}]')
     nmc_halt_if_tagged(callback, logical_path)
+    # let other policy sets fire
+    return irods_errors.RULE_ENGINE_CONTINUE
 
 def nmc_halt_if_enqueued(callback, logical_path):
     global nmc_enqueued
@@ -289,3 +296,5 @@ def pep_api_mod_avu_metadata_pre(rule_args, callback, rei):
     # rm tag from data object or collection
     if (avu_operation in ['rm'] and avu_type in ['-d', '-C'] and [a, v, u] == [nmc_a, nmc_v, nmc_u]):
         nmc_halt_if_enqueued(callback, logical_path)
+    # let other policy sets fire
+    return irods_errors.RULE_ENGINE_CONTINUE
